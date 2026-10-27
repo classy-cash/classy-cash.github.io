@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Check site configuration
         run: |
           test "$(cat CNAME)" = classycash.dpdns.org
@@ -20,6 +23,23 @@ jobs:
           page = Path('index.html').read_text()
           assert 'href="https://skarbiec.mleczki.pl/"' in page
           assert 'https://classycash.dpdns.org/' in page
+          PY
+      - name: Check Cloudflare zone configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_READ_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+        run: |
+          set -eu
+          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ZONE_ID"
+          npm install -g cf@1.0.0-beta.12
+          cf dns records list --zone "$CLOUDFLARE_ZONE_ID" --name classycash.dpdns.org --per-page 100 > "$RUNNER_TEMP/classycash-dns.json"
+          python3 - "$RUNNER_TEMP/classycash-dns.json" <<'PY'
+          import json, sys
+          records = json.load(open(sys.argv[1]))
+          expected = {'185.199.108.153','185.199.109.153','185.199.110.153','185.199.111.153'}
+          assert expected <= {r['content'] for r in records if r['type'] == 'A' and not r['proxied']}
+          assert any(r['type'] == 'MX' and r['content'].endswith('.mx.cloudflare.net') for r in records)
+          print('Landing DNS and email routing records are present')
           PY
       - name: Check public HTTPS and Cloudflare DNS
         if: github.event_name != 'push'
