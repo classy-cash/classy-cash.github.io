@@ -7,6 +7,8 @@
   const availability = document.querySelector('#availability');
   const status = document.querySelector('#setup-status');
   const password = document.querySelector('#password');
+  const claimNotice = document.querySelector('#claim-notice');
+  const claimCode = document.querySelector('#claim-code');
   const toggle = document.querySelector('#show-password');
   const unavailable = 'Kreator nie jest jeszcze dostępny. Wróć później — nie wysyłaj nam danych serwera w wiadomości.';
   toggle.addEventListener('click', () => {
@@ -38,7 +40,9 @@
       payload.password = '';
       if (!response.ok) throw Error('failed');
       const result = await response.json();
-      if (!/^[a-f0-9]{32}$/.test(result.id || '') || !/^[a-f0-9]{64}$/.test(result.token || '')) throw Error('failed');
+      if (!/^[a-f0-9]{32}$/.test(result.id || '') || !/^[a-f0-9]{64}$/.test(result.token || '') || !/^[a-f0-9]{64}$/.test(result.claim_token || '')) throw Error('failed');
+      claimCode.textContent = result.claim_token;
+      claimNotice.hidden = false;
       await follow(result.id, result.token);
     } catch (_) {
       payload.password = '';

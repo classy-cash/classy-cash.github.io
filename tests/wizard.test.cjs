@@ -7,7 +7,7 @@ const script = fs.readFileSync('wizard.js', 'utf8');
 
 function page(fetch) {
   const nodes = {};
-  for (const id of ['setup-form', 'setup-fields', 'availability', 'setup-status', 'password', 'show-password']) {
+  for (const id of ['setup-form', 'setup-fields', 'availability', 'setup-status', 'password', 'show-password', 'claim-notice', 'claim-code']) {
     nodes[id] = { disabled: id === 'setup-fields', hidden: false, type: 'password', value: '', textContent: '',
       addEventListener(name, handler) { this[name] = handler; }, setAttribute() {}, append(node) { this.link = node; } };
   }
@@ -36,7 +36,7 @@ test('submits only after readiness and clears the password before completion', a
     if (url.endsWith('/capabilities')) return {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1'})};
     if (url.endsWith('/operations') && options.method === 'POST') {
       await waiting;
-      return {ok: true, json: async () => ({id: 'a'.repeat(32), token: 'b'.repeat(64)})};
+      return {ok: true, json: async () => ({id: 'a'.repeat(32), token: 'b'.repeat(64), claim_token: 'c'.repeat(64)})};
     }
     return {ok: true, json: async () => ({state: 'complete', app_url: 'https://frog03-20001.wykr.es'})};
   });
@@ -47,6 +47,8 @@ test('submits only after readiness and clears the password before completion', a
   assert.equal(nodes['setup-fields'].disabled, true);
   finish();
   await submitted;
+  assert.equal(nodes['claim-code'].textContent, 'c'.repeat(64));
+  assert.equal(nodes['claim-notice'].hidden, false);
   assert.equal(nodes['setup-status'].link.href, 'https://frog03-20001.wykr.es/');
   assert.match(calls[1].options.body, /test-password/);
   assert.equal(calls[2].options.headers.Authorization, 'Bearer ' + 'b'.repeat(64));
