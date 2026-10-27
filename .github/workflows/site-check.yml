@@ -24,6 +24,8 @@ jobs:
           assert 'href="https://skarbiec.mleczki.pl/"' in page
           assert 'https://classycash.dpdns.org/' in page
           PY
+      - name: Test setup interface
+        run: node --test tests/wizard.test.cjs
       - name: Check Cloudflare zone configuration
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_READ_TOKEN }}
