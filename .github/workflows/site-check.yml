@@ -1,0 +1,30 @@
+name: Check landing page and domain
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '22 6 * * *'
+permissions:
+  contents: read
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check site configuration
+        run: |
+          test "$(cat CNAME)" = classycash.dpdns.org
+          python3 - <<'PY'
+          from pathlib import Path
+          page = Path('index.html').read_text()
+          assert 'href="https://skarbiec.mleczki.pl/"' in page
+          assert 'https://classycash.dpdns.org/' in page
+          PY
+      - name: Check public HTTPS and Cloudflare DNS
+        if: github.event_name != 'push'
+        run: |
+          set -eu
+          curl --fail --silent --show-error --retry 3 https://classycash.dpdns.org/ | grep -q 'Classy Cash'
+          dig +short MX classycash.dpdns.org | grep -q mx.cloudflare.net
+          curl --fail --silent --show-error --retry 3 https://skarbiec.mleczki.pl/ready | grep -q '"mode":"demo"'

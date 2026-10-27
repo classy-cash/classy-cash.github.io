@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://classy-cash.github.io/sitemap.xml
+Sitemap: https://classycash.dpdns.org/sitemap.xml
