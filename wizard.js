@@ -38,6 +38,12 @@
       const response = await fetch(`${service}/v1/operations`, { method: 'POST', credentials: 'omit', cache: 'no-store',
         headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
       payload.password = '';
+      if (response.status === 400 || response.status === 429) {
+        fields.disabled = false;
+        status.className = 'wizard-notice error';
+        status.textContent = response.status === 400 ? 'Sprawdź adres, port i dane logowania, a następnie spróbuj ponownie.' : 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
+        return;
+      }
       if (!response.ok) throw Error('failed');
       const result = await response.json();
       if (!/^[a-f0-9]{32}$/.test(result.id || '') || !/^[a-f0-9]{64}$/.test(result.token || '') || !/^[a-f0-9]{64}$/.test(result.claim_token || '')) throw Error('failed');

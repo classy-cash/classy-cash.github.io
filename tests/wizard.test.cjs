@@ -53,3 +53,15 @@ test('submits only after readiness and clears the password before completion', a
   assert.match(calls[1].options.body, /test-password/);
   assert.equal(calls[2].options.headers.Authorization, 'Bearer ' + 'b'.repeat(64));
 });
+
+
+test('lets a user correct a rejected request without keeping the password', async () => {
+  const nodes = page(async url => url.endsWith('/capabilities')
+    ? {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1'})}
+    : {ok: false, status: 400});
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.equal(nodes['setup-fields'].disabled, false);
+  assert.equal(nodes.password.value, '');
+  assert.match(nodes['setup-status'].textContent, /Sprawdź adres/);
+});
