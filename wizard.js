@@ -29,10 +29,18 @@
     event.preventDefault();
     if (fields.disabled || !form.reportValidity()) return;
     fields.disabled = true;
+    const fingerprint = form.elements.fingerprint.value.trim();
+    if (!/^SHA256:[A-Za-z0-9+/]{43}=?$/.test(fingerprint)) {
+      status.hidden = false;
+      status.className = 'wizard-notice error';
+      status.textContent = 'Odcisk klucza ma postać SHA256:… (43 znaki po dwukropku). Skopiuj go dokładnie z komunikatu programu SSH.';
+      fields.disabled = false;
+      return;
+    }
+    const payload = { host: form.elements.host.value.trim(), login: form.elements.login.value.trim(), password: password.value, host_key_fingerprint: fingerprint };
     status.hidden = false;
     status.className = 'wizard-notice';
     status.textContent = 'Przygotowujemy instalację. Nie zamykaj tej karty.';
-    const payload = { host: form.elements.host.value.trim(), login: form.elements.login.value.trim(), password: password.value };
     password.value = '';
     try {
       const response = await fetch(`${service}/v1/operations`, { method: 'POST', credentials: 'omit', cache: 'no-store',
@@ -41,7 +49,7 @@
       if (response.status === 400 || response.status === 429) {
         fields.disabled = false;
         status.className = 'wizard-notice error';
-        status.textContent = response.status === 400 ? 'Sprawdź adres, port i dane logowania, a następnie spróbuj ponownie.' : 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
+        status.textContent = response.status === 400 ? 'Sprawdź adres, port, dane logowania i odcisk klucza, a następnie spróbuj ponownie.' : 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
         return;
       }
       if (!response.ok) throw Error('failed');
@@ -50,8 +58,16 @@
       claimCode.textContent = result.claim_token;
       claimNotice.hidden = false;
       await follow(result.id, result.token);
-    } catch (_) {
+    } catch (error) {
       payload.password = '';
+      if (error && error.retrySafe) {
+        // The service stopped before touching anything (typically a fingerprint that does not match the server).
+        claimNotice.hidden = true;
+        fields.disabled = false;
+        status.className = 'wizard-notice error';
+        status.textContent = 'Nie udało się zweryfikować serwera, a nic nie zostało zmienione. Sprawdź odcisk klucza, adres i port, wpisz hasło ponownie i spróbuj jeszcze raz.';
+        return;
+      }
       status.className = 'wizard-notice error';
       status.textContent = 'Nie udało się potwierdzić rozpoczęcia instalacji. Nie próbuj ponownie, jeśli serwer mógł już zostać skonfigurowany; skontaktuj się z administratorem.';
     }
@@ -61,7 +77,7 @@
       const response = await fetch(`${service}/v1/operations/${id}`, {headers: {'Authorization': `Bearer ${token}`}, credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(10000)});
       if (!response.ok) throw Error('status unavailable');
       const data = await response.json();
-      if (data.state === 'failed') throw Error('setup failed');
+      if (data.state === 'failed') { const failure = Error('setup failed'); failure.retrySafe = data.retry_safe === true; throw failure; }
       if (data.state === 'complete') {
         const url = new URL(data.app_url);
         if (url.protocol !== 'https:' || !/^frog[0-9]+-[0-9]+\.wykr\.es$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw Error('bad url');

@@ -11,7 +11,7 @@ function page(fetch) {
     nodes[id] = { disabled: id === 'setup-fields', hidden: false, type: 'password', value: '', textContent: '',
       addEventListener(name, handler) { this[name] = handler; }, setAttribute() {}, append(node) { this.link = node; } };
   }
-  nodes['setup-form'].elements = {host: {value: 'frog03.mikr.us:10001'}, login: {value: 'frog'}};
+  nodes['setup-form'].elements = {host: {value: 'frog03.mikr.us:10001'}, login: {value: 'frog'}, fingerprint: {value: 'SHA256:' + 'A'.repeat(43)}};
   nodes['setup-form'].reportValidity = () => true;
   nodes.password.value = 'test-password';
   const document = {querySelector(selector) { return nodes[selector.slice(1)]; }, createElement() { return {}; }};
@@ -51,6 +51,7 @@ test('submits only after readiness and clears the password before completion', a
   assert.equal(nodes['claim-notice'].hidden, false);
   assert.equal(nodes['setup-status'].link.href, 'https://frog03-20001.wykr.es/');
   assert.match(calls[1].options.body, /test-password/);
+  assert.equal(JSON.parse(calls[1].options.body).host_key_fingerprint, 'SHA256:' + 'A'.repeat(43));
   assert.equal(calls[2].options.headers.Authorization, 'Bearer ' + 'b'.repeat(64));
 });
 
@@ -64,4 +65,45 @@ test('lets a user correct a rejected request without keeping the password', asyn
   assert.equal(nodes['setup-fields'].disabled, false);
   assert.equal(nodes.password.value, '');
   assert.match(nodes['setup-status'].textContent, /Sprawdź adres/);
+});
+
+test('refuses to send anything without a well-formed host key fingerprint', async () => {
+  const calls = [];
+  const nodes = page(async (url, options) => {
+    calls.push(url);
+    return {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1'})};
+  });
+  await tick();
+  nodes['setup-form'].elements.fingerprint.value = 'MD5:aa:bb';
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.equal(nodes['setup-fields'].disabled, false);
+  assert.match(nodes['setup-status'].textContent, /SHA256/);
+  assert.equal(calls.filter(url => url.endsWith('/operations')).length, 0);
+  assert.equal(nodes.password.value, 'test-password');
+});
+
+test('lets the owner retry when the service failed before touching anything', async () => {
+  const nodes = page(async (url, options) => {
+    if (url.endsWith('/capabilities')) return {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1'})};
+    if (options && options.method === 'POST') return {ok: true, json: async () => ({id: 'a'.repeat(32), token: 'b'.repeat(64), claim_token: 'c'.repeat(64)})};
+    return {ok: true, json: async () => ({state: 'failed', retry_safe: true})};
+  });
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.equal(nodes['setup-fields'].disabled, false);
+  assert.equal(nodes['claim-notice'].hidden, true);
+  assert.match(nodes['setup-status'].textContent, /nic nie zostało zmienione/);
+  assert.equal(nodes.password.value, '');
+});
+
+test('keeps the form closed and warns when a later failure may have left resources behind', async () => {
+  const nodes = page(async (url, options) => {
+    if (url.endsWith('/capabilities')) return {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1'})};
+    if (options && options.method === 'POST') return {ok: true, json: async () => ({id: 'a'.repeat(32), token: 'b'.repeat(64), claim_token: 'c'.repeat(64)})};
+    return {ok: true, json: async () => ({state: 'failed', retry_safe: false})};
+  });
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.equal(nodes['setup-fields'].disabled, true);
+  assert.match(nodes['setup-status'].textContent, /Nie próbuj ponownie/);
 });
