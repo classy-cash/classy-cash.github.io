@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#1a2a52">
+  <link rel="icon" href="assets/brand/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="wizard.css">
+  <script src="wizard.js" defer></script>
+  <title>Własna instancja — Classy Cash</title>
+</head>
+<body>
+  <a class="skip" href="#tresc">Przejdź do treści</a>
+  <header class="site-header"><nav class="nav wrap" aria-label="Nawigacja"><a class="brand" href="/"><img src="assets/brand/logo.svg" alt="Classy Cash" width="184" height="40"></a><a class="nav-cta" href="/">Wróć na stronę <span aria-hidden="true">↗</span></a></nav></header>
+  <main id="tresc" class="wizard wrap">
+    <div class="wizard-intro"><p class="section-label">WŁASNA INSTANCJA</p><h1>Twoja klasa.<br><em>Twoje miejsce.</em></h1><p>Przejdź przez przygotowanie serwera i uruchomienie Classy Cash krok po kroku. Nie potrzebujesz konta GitHub.</p></div>
+    <section class="wizard-card" aria-labelledby="register-heading"><span class="wizard-number">01</span><div><h2 id="register-heading">Aktywuj serwer FROG</h2><p>Otwórz stronę Mikrusa w nowej karcie, zarejestruj serwer i wykonaj jednorazową opłatę weryfikacyjną zgodnie z aktualnymi warunkami dostawcy. Możesz posiadać jeden darmowy serwer FROG.</p><a class="button button-gold" href="https://frog.mikr.us/" target="_blank" rel="noopener noreferrer">Otwórz rejestrację FROG <span aria-hidden="true">↗</span><span class="sr-only"> (otwiera nową kartę)</span></a><p class="wizard-hint">Po aktywacji sprawdź wiadomość powitalną — znajdziesz w niej adres serwera, port SSH, nazwę użytkownika i hasło. Wróć do tej karty, gdy serwer będzie gotowy.</p></div></section>
+    <section class="wizard-card" aria-labelledby="server-heading"><span class="wizard-number">02</span><div><h2 id="server-heading">Podaj dane serwera</h2><p>Przepisz dane z wiadomości powitalnej. Hasło przekazujemy szyfrowanym połączeniem do usługi konfigurującej instancję; nie zapisujemy go w przeglądarce.</p><div id="availability" class="wizard-notice" role="status">Sprawdzamy dostępność kreatora…</div>
+      <form id="setup-form" novalidate>
+        <fieldset id="setup-fields" disabled><label for="host">Adres serwera i port SSH</label><input id="host" name="host" placeholder="frog01.mikr.us:10001" autocomplete="off" autocapitalize="none" spellcheck="false" required><p class="wizard-hint">Możesz też wkleić polecenie SSH z wiadomości, np. <code>ssh frog@frog01.mikr.us -p 10001</code>.</p>
+        <label for="login">Użytkownik SSH</label><input id="login" name="login" value="frog" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        <label for="password">Hasło SSH</label><div class="password-row"><input id="password" name="password" type="password" autocomplete="current-password" required><button id="show-password" type="button" aria-controls="password" aria-pressed="false">Pokaż</button></div><p class="wizard-hint">Nie wysyłaj nam hasła przez e-mail ani komunikator.</p>
+        <button class="button button-gold" type="submit">Uruchom instancję <span aria-hidden="true">→</span></button></fieldset>
+      </form><div id="setup-status" class="wizard-notice" role="status" aria-live="polite" hidden></div>
+    </div></section>
+    <section class="wizard-card" aria-labelledby="finish-heading"><span class="wizard-number">03</span><div><h2 id="finish-heading">Skonfiguruj klasę i powiadomienia</h2><p>Po instalacji otwórz otrzymany adres aplikacji i utwórz konto skarbnika. Do automatycznego rozpoznawania wpłat potrzebujesz konta w Alior Banku, telefonu powiązanego z kontem w BLIK oraz powiadomień e-mail z banku.</p><p class="wizard-hint">Aplikacja nie wykonuje przelewów — rodzice płacą bezpośrednio do skarbnika. Sprawdź także poprawność konfiguracji za pomocą płatności testowej w ustawieniach.</p></div></section>
+  </main>
+  <footer><div class="wrap footer-inner"><a class="footer-brand" href="/"><img src="assets/brand/logo.svg" alt="Classy Cash" width="165" height="36"></a><p>Składki klasowe pod kontrolą.</p><a href="https://github.com/classy-cash">GitHub ↗</a></div></footer>
+</body></html>
