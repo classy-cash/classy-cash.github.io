@@ -8,18 +8,18 @@ const script = fs.readFileSync('wizard.js', 'utf8');
 const SITE_KEY = '0x4AAAAAAABBBBccccDDDD';
 function page(fetch, human = {}) {
   const nodes = {};
-  for (const id of ['setup-form', 'setup-fields', 'availability', 'setup-status', 'password', 'show-password', 'claim-notice', 'claim-code', 'turnstile']) {
+  for (const id of ['setup-form', 'setup-fields', 'availability', 'setup-status', 'password', 'show-password', 'claim-notice', 'claim-code', 'turnstile', 'check-again']) {
     nodes[id] = { disabled: id === 'setup-fields', hidden: false, type: 'password', value: '', textContent: '',
       addEventListener(name, handler) { this[name] = handler; }, setAttribute() {}, append(node) { this.link = node; } };
   }
-  nodes['setup-form'].elements = {host: {value: 'frog03.mikr.us:10001'}, login: {value: 'frog'}, fingerprint: {value: 'SHA256:' + 'A'.repeat(43)}};
+  nodes['setup-form'].elements = {host: {value: 'frog03.mikr.us:10001'}, login: {value: 'frog'}};
   nodes['setup-form'].reportValidity = () => true;
   nodes.password.value = 'test-password';
   const widget = {rendered: null, resets: 0, token: human.token === undefined ? 'human-token' : human.token};
   const turnstile = {render(box, options) { widget.rendered = options; return 'w1'; }, getResponse() { return widget.token; }, reset() { widget.resets++; }};
   const head = {append(node) { head.script = node; if (human.load !== false) { context.turnstile = turnstile; node.onload(); } else node.onerror(); }};
   const document = {head, querySelector(selector) { return nodes[selector.slice(1)]; }, createElement() { return {}; }};
-  const context = {document, fetch, URL, AbortSignal, setTimeout};
+  const context = {document, fetch, URL, AbortSignal, setTimeout: human.fastTimers ? (fn => setImmediate(fn)) : setTimeout};
   vm.runInNewContext(script, context, {timeout: 2000});
   nodes.widget = widget; nodes.head = head;
   return nodes;
@@ -57,7 +57,7 @@ test('submits only after readiness and clears the password before completion', a
   assert.equal(nodes['claim-notice'].hidden, false);
   assert.equal(nodes['setup-status'].link.href, 'https://frog03-20001.wykr.es/');
   assert.match(calls[1].options.body, /test-password/);
-  assert.equal(JSON.parse(calls[1].options.body).host_key_fingerprint, 'SHA256:' + 'A'.repeat(43));
+  assert.deepEqual(Object.keys(JSON.parse(calls[1].options.body)).sort(), ['host', 'login', 'password', 'turnstile_token']);
   assert.equal(calls[2].options.headers.Authorization, 'Bearer ' + 'b'.repeat(64));
 });
 
@@ -71,21 +71,6 @@ test('lets a user correct a rejected request without keeping the password', asyn
   assert.equal(nodes['setup-fields'].disabled, false);
   assert.equal(nodes.password.value, '');
   assert.match(nodes['setup-status'].textContent, /Sprawdź adres/);
-});
-
-test('refuses to send anything without a well-formed host key fingerprint', async () => {
-  const calls = [];
-  const nodes = page(async (url, options) => {
-    calls.push(url);
-    return {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1', turnstile_site_key: SITE_KEY})};
-  });
-  await tick();
-  nodes['setup-form'].elements.fingerprint.value = 'MD5:aa:bb';
-  await nodes['setup-form'].submit({preventDefault() {}});
-  assert.equal(nodes['setup-fields'].disabled, false);
-  assert.match(nodes['setup-status'].textContent, /SHA256/);
-  assert.equal(calls.filter(url => url.endsWith('/operations')).length, 0);
-  assert.equal(nodes.password.value, 'test-password');
 });
 
 test('lets the owner retry when the service failed before touching anything', async () => {
@@ -163,4 +148,70 @@ test('lets the owner retry after a failed verification', async () => {
   assert.equal(nodes['setup-fields'].disabled, false);
   assert.match(nodes['setup-status'].textContent, /Weryfikacja nie powiodła się/);
   assert.equal(nodes.widget.resets, 1);
+});
+
+const ready = {ok: true, json: async () => ({ready: true, protocol: 'classycash-setup-v1', turnstile_site_key: SITE_KEY})};
+const started = {ok: true, json: async () => ({id: 'a'.repeat(32), token: 'b'.repeat(64), claim_token: 'c'.repeat(64)})};
+
+test('keeps waiting through a long installation instead of reporting failure', async () => {
+  let polls = 0;
+  const nodes = page(async (url, options) => {
+    if (url.endsWith('/capabilities')) return ready;
+    if (options && options.method === 'POST') return started;
+    polls++;
+    return {ok: true, json: async () => ({state: 'pending'})};
+  }, {fastTimers: true});
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  // 45 minutes of watching: far more than the old 6 minutes, and the install job may take 30.
+  assert.ok(polls > 120, `polled ${polls} times`);
+  assert.doesNotMatch(nodes['setup-status'].textContent, /nie próbuj|zatrzymała|nie udało/i);
+  assert.match(nodes['setup-status'].textContent, /nadal trwa/);
+  assert.equal(nodes['check-again'].hidden, false);
+  assert.equal(nodes['setup-fields'].disabled, true);
+  assert.equal(nodes['claim-notice'].hidden, false);
+});
+
+test('an unreachable status endpoint is not reported as a failed setup, and checking again resumes', async () => {
+  let mode = 'down';
+  const nodes = page(async (url, options) => {
+    if (url.endsWith('/capabilities')) return ready;
+    if (options && options.method === 'POST') return started;
+    if (mode === 'down') throw Error('network');
+    return {ok: true, json: async () => ({state: 'complete', app_url: 'https://frog03-20001.wykr.es'})};
+  }, {fastTimers: true});
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.match(nodes['setup-status'].textContent, /nadal trwa/);
+  assert.doesNotMatch(nodes['setup-status'].textContent, /zatrzymała/);
+  mode = 'up';
+  await nodes['check-again'].click();
+  await tick();
+  assert.equal(nodes['setup-status'].link.href, 'https://frog03-20001.wykr.es/');
+  assert.equal(nodes['check-again'].hidden, true);
+});
+
+test('a short outage while polling is survived', async () => {
+  let calls = 0;
+  const nodes = page(async (url, options) => {
+    if (url.endsWith('/capabilities')) return ready;
+    if (options && options.method === 'POST') return started;
+    if (++calls < 5) throw Error('blip');
+    return {ok: true, json: async () => ({state: 'complete', app_url: 'https://frog03-20001.wykr.es'})};
+  }, {fastTimers: true});
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.equal(nodes['setup-status'].link.href, 'https://frog03-20001.wykr.es/');
+});
+
+test('only a failed state from the service is reported as a failure', async () => {
+  const nodes = page(async (url, options) => {
+    if (url.endsWith('/capabilities')) return ready;
+    if (options && options.method === 'POST') return started;
+    return {ok: true, json: async () => ({state: 'failed', retry_safe: false})};
+  }, {fastTimers: true});
+  await tick();
+  await nodes['setup-form'].submit({preventDefault() {}});
+  assert.match(nodes['setup-status'].textContent, /zatrzymała się/);
+  assert.equal(nodes['check-again'].hidden, true);
 });
