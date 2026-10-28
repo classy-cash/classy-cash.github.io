@@ -10,6 +10,8 @@
   const claimNotice = document.querySelector('#claim-notice');
   const claimCode = document.querySelector('#claim-code');
   const toggle = document.querySelector('#show-password');
+  const humanBox = document.querySelector('#turnstile');
+  let widget;
   const unavailable = 'Kreator nie jest jeszcze dostępny. Wróć później — nie wysyłaj nam danych serwera w wiadomości.';
   toggle.addEventListener('click', () => {
     const show = password.type === 'password';
@@ -17,10 +19,28 @@
     toggle.textContent = show ? 'Ukryj' : 'Pokaż';
     toggle.setAttribute('aria-pressed', String(show));
   });
+  // Cloudflare Turnstile is loaded only after the service reports it is ready and names its public site key.
+  function loadTurnstile(siteKey) {
+    return new Promise((resolve, reject) => {
+      const render = () => { widget = globalThis.turnstile.render(humanBox, {sitekey: siteKey, action: 'setup', language: 'pl'}); resolve(); };
+      if (globalThis.turnstile) return render();
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.onload = () => globalThis.turnstile ? render() : reject(Error('turnstile'));
+      script.onerror = () => reject(Error('turnstile'));
+      document.head.append(script);
+    });
+  }
+  function resetHumanCheck() { try { globalThis.turnstile.reset(widget); } catch (_) {} }
   fetch(`${service}/v1/capabilities`, {cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(8000)})
     .then(response => { if (!response.ok) throw Error('unavailable'); return response.json(); })
     .then(data => {
       if (data.ready !== true || data.protocol !== 'classycash-setup-v1') throw Error('unavailable');
+      if (!/^[A-Za-z0-9_-]{10,64}$/.test(data.turnstile_site_key || '')) throw Error('unavailable');
+      return loadTurnstile(data.turnstile_site_key);
+    })
+    .then(() => {
       fields.disabled = false;
       availability.textContent = 'Kreator jest gotowy. Wprowadź dane otrzymane od Mikrusa.';
     })
@@ -37,7 +57,15 @@
       fields.disabled = false;
       return;
     }
-    const payload = { host: form.elements.host.value.trim(), login: form.elements.login.value.trim(), password: password.value, host_key_fingerprint: fingerprint };
+    const humanToken = globalThis.turnstile.getResponse(widget);
+    if (!humanToken) {
+      status.hidden = false;
+      status.className = 'wizard-notice error';
+      status.textContent = 'Potwierdź, że nie jesteś robotem, i wyślij formularz ponownie.';
+      fields.disabled = false;
+      return;
+    }
+    const payload = { host: form.elements.host.value.trim(), login: form.elements.login.value.trim(), password: password.value, host_key_fingerprint: fingerprint, turnstile_token: humanToken };
     status.hidden = false;
     status.className = 'wizard-notice';
     status.textContent = 'Przygotowujemy instalację. Nie zamykaj tej karty.';
@@ -46,10 +74,12 @@
       const response = await fetch(`${service}/v1/operations`, { method: 'POST', credentials: 'omit', cache: 'no-store',
         headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), signal: AbortSignal.timeout(30000) });
       payload.password = '';
-      if (response.status === 400 || response.status === 429) {
+      payload.turnstile_token = '';
+      resetHumanCheck();
+      if (response.status === 400 || response.status === 403 || response.status === 429) {
         fields.disabled = false;
         status.className = 'wizard-notice error';
-        status.textContent = response.status === 400 ? 'Sprawdź adres, port, dane logowania i odcisk klucza, a następnie spróbuj ponownie.' : 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
+        status.textContent = response.status === 403 ? 'Weryfikacja nie powiodła się. Spróbuj ponownie.' : response.status === 400 ? 'Sprawdź adres, port, dane logowania i odcisk klucza, a następnie spróbuj ponownie.' : 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
         return;
       }
       if (!response.ok) throw Error('failed');
@@ -60,6 +90,8 @@
       await follow(result.id, result.token);
     } catch (error) {
       payload.password = '';
+      payload.turnstile_token = '';
+      resetHumanCheck();
       if (error && error.retrySafe) {
         // The service stopped before touching anything (typically a fingerprint that does not match the server).
         claimNotice.hidden = true;
